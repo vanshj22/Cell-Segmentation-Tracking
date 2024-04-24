@@ -136,8 +136,13 @@ def video():
         target_size = (width, height)
 
         # Create an MP4 video combining uploaded images and predicted masks
+        
+
+        # Create an MP4 video combining uploaded images and predicted masks
         combined_video_path = 'combined_video.mp4'
-        with imageio.get_writer(combined_video_path, fps=1) as writer:
+        writer = imageio.get_writer(combined_video_path, fps=1)
+
+        try:
             for img, pred_mask in zip(uploaded_images, pred_masks):
                 # Resize the uploaded image and predicted mask
                 resized_img = resize_image(img, target_size)
@@ -160,6 +165,10 @@ def video():
 
                 # Append combined image to video
                 writer.append_data(combined_img)
+
+        finally:
+            writer.close()
+
 
         # Display the combined video
         st.subheader('Combined Images and Masks MP4 Video')
