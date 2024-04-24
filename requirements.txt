@@ -1,0 +1,11 @@
+numpy
+pandas
+matplotlib
+scikit-image
+scikit-learn
+tqdm
+tensorflow == 2.10
+PIMS
+trackpy
+streamlit == 1.22
+streamlit-antd-components
