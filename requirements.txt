@@ -9,3 +9,4 @@ PIMS
 trackpy
 streamlit == 1.22
 streamlit-antd-components
+imageio
