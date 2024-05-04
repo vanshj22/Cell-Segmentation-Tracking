@@ -195,24 +195,33 @@ def about():
         st.image("frame_1.png", use_column_width=True)
     
 
+@pims.pipeline
+def gray(image):
+    return np.array(image)[:, :, 1] 
 
 
 def trackpy():
-    @pims.pipeline
-    def gray(image):
-        return np.array(image)[:, :, 1]  # Convert image to numpy array and take just the green channel
     st.subheader("Trackpy")
     uploaded_imgs = st.file_uploader("Choose multiple images...", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
     if uploaded_imgs is not None:
         frames = []
         for uploaded_img in uploaded_imgs:
-            image = Image.open(io.BytesIO(uploaded_img.read()))
-            frames.append(gray(image))
+            # Open the uploaded image
+            img = pims.ImageReader(uploaded_img)
+            # Convert to grayscale
+            gray_frame = gray(img)
+            # Append to frames list
+            frames.append(gray_frame)
+            # Display the first frame
+            st.image(gray_frame[0], caption='Uploaded Image', use_column_width=True)
         
         if frames:
             features = tp.locate(frames[0], 11, invert=True)  # 11 - size of the features(needs to be an odd number) 
-            features = tp.locate(frames[0], 11, invert=True, minmass=20)
+            
+            features = tp.annotate(features, frames[0])
+
+            st.image(features, caption='Features', use_column_width=True)
             features = tp.batch(frames[:300], 11, minmass=20, invert=True)   
             t = tp.link(features, 5, memory=3)
             t1 = tp.filter_stubs(t, 25) 
@@ -221,10 +230,16 @@ def trackpy():
             t2 = t1[((t1['mass'] > 50) & (t1['size'] < 2.6) &
                     (t1['ecc'] < 0.3))]
             plt.figure()
-            tp.annotate(t2[t2['frame'] == 0], frames[0])
+            # Determine if the image is RGB or grayscale
+            if len(frames[0].shape) == 3 and frames[0].shape[2] in [3, 4]:  # RGB image
+                tp.annotate(t2[t2['frame'] == 0], frames[0][:, :, 0])  # Assuming the first channel represents grayscale
+            else:  # Grayscale image
+                tp.annotate(t2[t2['frame'] == 0], frames[0])
         else:
             st.write("")
-     
+
+
+
 def app():
     st.set_page_config(page_title="Cell Segmentation and Tracking", layout="wide")
     with st.sidebar:
