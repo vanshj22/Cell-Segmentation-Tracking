@@ -14,6 +14,15 @@ import io
 import pims
 import trackpy as tp
 import streamlit_antd_components as sac
+import matplotlib.animation as animation
+from skimage.io import imread, imshow
+from skimage.transform import resize
+from scipy import ndimage
+from skimage import measure
+from keras.models import load_model
+import tifffile as tiff
+import cv2
+from PIL import Image, ImageDraw
 
 # Define constants
 IMG_WIDTH = 128
@@ -35,51 +44,343 @@ def preprocess_test_image(image):
     img = resize(img, (IMG_HEIGHT, IMG_WIDTH), mode='constant', preserve_range=True)
     return img
 
-def images():
+# def images():
+#     # Load the saved model
+#     model = load_model(model_path)
+
+#     # Display file uploader for test images
+#     st.title('Upload Test Images For Single Image Segmentation')
+#     uploaded_files = st.file_uploader("Choose multiple images...", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
+
+#     if uploaded_files:
+#         pred_masks = []
+#         uploaded_images = []
+        
+#         # Create two columns for displaying uploaded images and predicted masks
+#         col3, col4 = st.columns(2)
+        
+#         for uploaded_file in uploaded_files:
+#             # Read the uploaded image
+#             image = Image.open(uploaded_file)
+#             uploaded_images.append(image)
+#             # Preprocess the image
+#             test_image = preprocess_test_image(image)
+            
+#             # Expand the dimensions of the test image to create a batch of size 1
+#             test_image_batch = np.expand_dims(test_image, axis=0)
+
+#             # Predict segmentation mask
+#             pred_mask = model.predict(test_image_batch)
+
+#             # Threshold the predicted mask
+#             pred_mask_thresholded = (pred_mask > 0.5).astype(np.uint8)
+            
+#             # Resize the predicted mask to match the height of the uploaded image
+#             pred_mask_resized = np.array(Image.fromarray(pred_mask_thresholded.squeeze()).resize(image.size))
+            
+#             # Append the predicted mask to the list
+#             pred_masks.append(pred_mask_resized)
+            
+#             # Display the uploaded image and predicted mask in the respective columns
+#             col3.image(image, caption='Uploaded Image', use_column_width=True)
+#             col4.image((pred_mask_resized * 255).astype(np.uint8), caption='Predicted Mask', use_column_width=True)
+
+def std():
+    with st.container():
+        opt = st.sidebar.radio("Select the model", ["Predicted Mask", "Annotate Cells", "Plot Trajectory", "Plot Drift"])
+
+        if opt == "Predicted Mask":
+            # st.spinner(text="In progress...")
+
+            IMG_WIDTH = 128
+            IMG_HEIGHT = 128
+            IMG_CHANNELS = 3
+
+            # Path to the saved model
+            model_path = "cell-segmentation/U-net-model.h5"
+
+            # Function to preprocess test images
+            def preprocess_test_image(image):
+                image = np.array(image)[:,:,:IMG_CHANNELS]
+                image = resize(image, (IMG_HEIGHT, IMG_WIDTH), mode='constant', preserve_range=True)
+                image = np.expand_dims(image, axis=-1)
+                return image
+
+            # Load the saved model
+            model = load_model(model_path)
+
+            st.title("Cell Segmentation with U-Net")
+
+            uploaded_files = st.file_uploader("Choose image files", accept_multiple_files=True, type=["jpg", "jpeg", "png", "tif"])
+
+            if uploaded_files:
+                if any(file.type == "image/tiff" for file in uploaded_files):
+                    for file in uploaded_files:
+                        if file.type == "image/tiff":
+                            # Read the TIFF file
+                            images = tiff.imread(file)
+
+                            # Preprocess images
+                            images = np.array([preprocess_test_image(img) for img in images])
+
+                            # Predict masks
+                            predicted_masks = model.predict(images, batch_size=1, verbose=1)
+
+                            # Convert predictions to binary masks
+                            binary_masks = (predicted_masks > 0.7).astype(np.uint8)
+
+                            # Set up a plot to display images and masks side by side
+                            fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+
+                            def update(frame):
+                                for ax in axes:
+                                    ax.clear()
+                                # Display original image
+                                axes[0].imshow(images[frame, :, :, 0], cmap='gray')
+                                axes[0].set_title('Original Image')
+                                axes[0].axis('off')
+                                # Display predicted mask
+                                axes[1].imshow(binary_masks[frame, :, :, 0], cmap='gray')
+                                axes[1].set_title('Predicted Mask')
+                                axes[1].axis('off')
+                                fig.suptitle(f'Frame {frame + 1}/{len(images)}')
+
+                            # Create animation
+                            ani = animation.FuncAnimation(fig, update, frames=len(images), interval=500, repeat=True)
+
+                            # Save the animation as a GIF
+                            gif_path = 'segmentation_animation_unet.gif'
+                            ani.save(gif_path, writer='imagemagick')
+
+                            # Display the animation in Streamlit
+                            st.image(gif_path, caption='Segmentation Animation', use_column_width=True)
+                            break  # Only process the first TIFF file
+                else:
+                    images = [preprocess_test_image(Image.open(file)) for file in uploaded_files]
+                    images = np.array(images)
+
+                    # Predict masks
+                    predicted_masks = model.predict(images, batch_size=1, verbose=1)
+
+                    # Convert predictions to binary masks
+                    binary_masks = (predicted_masks > 0.7).astype(np.uint8)
+
+                    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+
+                    def update(frame):
+                        for ax in axes:
+                            ax.clear()
+                        # Display original image
+                        axes[0].imshow(images[frame, :, :, 0], cmap='gray')
+                        axes[0].set_title('Original Image')
+                        axes[0].axis('off')
+                        # Display predicted mask
+                        axes[1].imshow(binary_masks[frame, :, :, 0], cmap='gray')
+                        axes[1].set_title('Predicted Mask')
+                        axes[1].axis('off')
+                        fig.suptitle(f'Frame {frame + 1}/{len(images)}')
+
+                    # Create animation
+                    ani = animation.FuncAnimation(fig, update, frames=len(images), interval=500, repeat=True)
+
+                    # Save the animation as a GIF
+                    gif_path = 'segmentation_animation_unet.gif'
+                    ani.save(gif_path, writer='imagemagick')
+
+                    st.image(gif_path, caption="Segmentation Animation", use_column_width=True)
+
+        elif opt == "Annotate Cells":
+            IMG_WIDTH = 128
+            IMG_HEIGHT = 128
+            IMG_CHANNELS = 3
+
+            # Path to the saved model
+            model_path = "cell-segmentation/U-net-model.h5"
+
+            # Function to preprocess test images
+            def preprocess_test_image(image):
+                image = np.array(image)[:,:,:IMG_CHANNELS]
+                image = resize(image, (IMG_HEIGHT, IMG_WIDTH), mode='constant', preserve_range=True)
+                return image
+
+            # Load the saved model
+            model = load_model(model_path)
+
+            # Streamlit app
+            st.title("Cell Segmentation with U-Net")
+
+            uploaded_files = st.file_uploader("Choose image files", accept_multiple_files=True, type=["jpg", "jpeg", "png", "tif"])
+
+            if uploaded_files:
+                if any(file.type == "image/tiff" for file in uploaded_files):
+                    for file in uploaded_files:
+                        if file.type == "image/tiff":
+                            # Read the TIFF file
+                            images = tiff.imread(file)
+
+                            # Preprocess images
+                            images = np.array([preprocess_test_image(img) for img in images])
+
+                            # Predict masks
+                            predicted_masks = model.predict(images, batch_size=1, verbose=1)
+
+                            # Convert predictions to binary masks
+                            binary_masks = (predicted_masks > 0.7).astype(np.uint8)
+
+                            # Annotate the images with the predicted masks
+                            annotated_images = []
+                            for i in range(len(images)):
+                                # Convert to RGB
+                                annotated_image = Image.fromarray((images[i, :, :, 0] * 255).astype(np.uint8)).convert('RGB')
+                                draw = ImageDraw.Draw(annotated_image)
+                                contours, _ = cv2.findContours(binary_masks[i, :, :, 0], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                                for contour in contours:
+                                    if len(contour.shape) == 3:
+                                        contour = contour.squeeze(axis=1)
+                                    contour_points = [tuple(point) for point in contour]
+                                    draw.line(contour_points + [contour_points[0]], fill=(255, 0, 0), width=1)  # Closing the contour
+                                annotated_images.append(annotated_image)
+
+                            # Create GIF
+                            gif_path = 'segmentation_animation_unet.gif'
+                            annotated_images[0].save(gif_path, save_all=True, append_images=annotated_images[1:], loop=0, duration=500)
+
+                            # Display the animation in Streamlit
+                            st.image(gif_path, caption='Segmentation Animation', use_column_width=True)
+                            break  # Only process the first TIFF file
+                else:
+                    images = [preprocess_test_image(Image.open(file)) for file in uploaded_files]
+                    images = np.array(images)
+
+                    # Predict masks
+                    predicted_masks = model.predict(images, batch_size=1, verbose=1)
+
+                    # Convert predictions to binary masks
+                    binary_masks = (predicted_masks > 0.7).astype(np.uint8)
+
+                    # Annotate the images with the predicted masks
+                    annotated_images = []
+                    for i in range(len(images)):
+                        # Convert to RGB
+                        annotated_image = Image.fromarray((images[i, :, :, 0] * 255).astype(np.uint8)).convert('RGB')
+                        draw = ImageDraw.Draw(annotated_image)
+                        contours, _ = cv2.findContours(binary_masks[i, :, :, 0], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                        for contour in contours:
+                            if len(contour.shape) == 3:
+                                contour = contour.squeeze(axis=1)
+                            contour_points = [tuple(point) for point in contour]
+                            draw.line(contour_points + [contour_points[0]], fill=(255, 0, 0), width=1)  # Closing the contour
+                        annotated_images.append(annotated_image)
+
+                    # Create GIF
+                    gif_path = 'segmentation_animation_unet.gif'
+                    annotated_images[0].save(gif_path, save_all=True, append_images=annotated_images[1:], loop=0, duration=500)
+
+                    # Display the animation in Streamlit
+                    st.image(gif_path, caption="Segmentation Animation", use_column_width=True)
+def scinet():
+
+    IMG_WIDTH = 128
+    IMG_HEIGHT = 128
+    IMG_CHANNELS = 3
+
+    # Path to the saved model
+    model_path = "cell-segmentation/U-net-model.h5"
+
+    # Function to preprocess test images
+    def preprocess_test_image(image):
+        image = np.array(image)[:,:,:IMG_CHANNELS]
+        image = resize(image, (IMG_HEIGHT, IMG_WIDTH), mode='constant', preserve_range=True)
+        image = np.expand_dims(image, axis=-1)
+        return image
+
     # Load the saved model
     model = load_model(model_path)
 
-    # Display file uploader for test images
-    st.title('Upload Test Images For Single Image Segmentation')
-    uploaded_files = st.file_uploader("Choose multiple images...", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
+    st.title("Cell Segmentation with U-Net")
+
+    uploaded_files = st.file_uploader("Choose image files", accept_multiple_files=True, type=["jpg", "jpeg", "png", "tif"])
 
     if uploaded_files:
-        pred_masks = []
-        uploaded_images = []
-        
-        # Create two columns for displaying uploaded images and predicted masks
-        col3, col4 = st.columns(2)
-        
-        for uploaded_file in uploaded_files:
-            # Read the uploaded image
-            image = Image.open(uploaded_file)
-            uploaded_images.append(image)
-            # Preprocess the image
-            test_image = preprocess_test_image(image)
-            
-            # Expand the dimensions of the test image to create a batch of size 1
-            test_image_batch = np.expand_dims(test_image, axis=0)
+        if any(file.type == "image/tiff" for file in uploaded_files):
+            for file in uploaded_files:
+                if file.type == "image/tiff":
+                    # Read the TIFF file
+                    images = tiff.imread(file)
 
-            # Predict segmentation mask
-            pred_mask = model.predict(test_image_batch)
+                    # Preprocess images
+                    images = np.array([preprocess_test_image(img) for img in images])
 
-            # Threshold the predicted mask
-            pred_mask_thresholded = (pred_mask > 0.5).astype(np.uint8)
-            
-            # Resize the predicted mask to match the height of the uploaded image
-            pred_mask_resized = np.array(Image.fromarray(pred_mask_thresholded.squeeze()).resize(image.size))
-            
-            # Append the predicted mask to the list
-            pred_masks.append(pred_mask_resized)
-            
-            # Display the uploaded image and predicted mask in the respective columns
-            col3.image(image, caption='Uploaded Image', use_column_width=True)
-            col4.image((pred_mask_resized * 255).astype(np.uint8), caption='Predicted Mask', use_column_width=True)
+                    # Predict masks
+                    predicted_masks = model.predict(images, batch_size=1, verbose=1)
+
+                    # Convert predictions to binary masks
+                    binary_masks = (predicted_masks > 0.7).astype(np.uint8)
+
+                    # Set up a plot to display images and masks side by side
+                    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+
+                    def update(frame):
+                        for ax in axes:
+                            ax.clear()
+                        # Display original image
+                        axes[0].imshow(images[frame, :, :, 0], cmap='gray')
+                        axes[0].set_title('Original Image')
+                        axes[0].axis('off')
+                        # Display predicted mask
+                        axes[1].imshow(binary_masks[frame, :, :, 0], cmap='gray')
+                        axes[1].set_title('Predicted Mask')
+                        axes[1].axis('off')
+                        fig.suptitle(f'Frame {frame + 1}/{len(images)}')
+
+                    # Create animation
+                    ani = animation.FuncAnimation(fig, update, frames=len(images), interval=500, repeat=True)
+
+                    # Save the animation as a GIF
+                    gif_path = 'segmentation_animation_unet.gif'
+                    ani.save(gif_path, writer='imagemagick')
+
+                    # Display the animation in Streamlit
+                    st.image(gif_path, caption='Segmentation Animation', use_column_width=True)
+                    break  # Only process the first TIFF file
+        else:
+            images = [preprocess_test_image(Image.open(file)) for file in uploaded_files]
+            images = np.array(images)
+
+            # Predict masks
+            predicted_masks = model.predict(images, batch_size=1, verbose=1)
+
+            # Convert predictions to binary masks
+            binary_masks = (predicted_masks > 0.7).astype(np.uint8)
+
+            fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+
+            def update(frame):
+                for ax in axes:
+                    ax.clear()
+                # Display original image
+                axes[0].imshow(images[frame, :, :, 0], cmap='gray')
+                axes[0].set_title('Original Image')
+                axes[0].axis('off')
+                # Display predicted mask
+                axes[1].imshow(binary_masks[frame, :, :, 0], cmap='gray')
+                axes[1].set_title('Predicted Mask')
+                axes[1].axis('off')
+                fig.suptitle(f'Frame {frame + 1}/{len(images)}')
+
+            # Create animation
+            ani = animation.FuncAnimation(fig, update, frames=len(images), interval=500, repeat=True)
+
+            # Save the animation as a GIF
+            gif_path = 'segmentation_animation_unet.gif'
+            ani.save(gif_path, writer='imagemagick')
+
+            st.image(gif_path, caption="Segmentation Animation", use_column_width=True)
 
 
 
-
-            
+def images():   
+    pass 
 
 def video():
     # Load the saved model
@@ -247,13 +548,9 @@ def app():
             items=[
                 sac.MenuItem(label='Segmentation', type='group', children=[
                     sac.MenuItem(label='About'),
-                    sac.MenuItem(label='Single Image Segmentation'),
-                    sac.MenuItem(label='Multiple Image Segmentation'),
-                ]),
-                sac.MenuItem(label='Tracking', type='group', children=[
-                    sac.MenuItem(label='Trackpy'),
-                    sac.MenuItem(label='YOLOv8'),
-                ]),
+                    sac.MenuItem(label='StarDist2D'),
+                    sac.MenuItem(label='SCI-Net'),
+                ])
             ],
             key='About',
             open_all=True,
@@ -265,14 +562,11 @@ def app():
 
     if selection == 'About':
         about()
-    elif selection == 'Single Image Segmentation':
-        images()
-    elif selection == 'Multiple Image Segmentation':
-        video()
-    elif selection == 'Trackpy':
-        trackpy()
-    elif selection == 'YOLOv8':
-        st.write("YOLOv8")
+    elif selection == 'StarDist2D':
+        std()
+    elif selection == 'SCI-Net':
+        scinet()
+ 
 
 def main():
     app()
