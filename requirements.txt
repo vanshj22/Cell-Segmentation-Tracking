@@ -13,3 +13,4 @@ scipy
 keras
 tifffile
 opencv-python
+cv2-tools
